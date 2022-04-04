@@ -4,7 +4,7 @@
 #include <iostream>
 #include <sstream>
 
-namespace util
+namespace stratum
 {
     struct logger
     {

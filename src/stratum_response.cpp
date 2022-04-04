@@ -1,10 +1,13 @@
 #include "stratum_response.h"
 
+#include "logger.h"
 #include "stratum.h"
 
 namespace stratum
 {
-template <typename data_t> bool fetch(const char *key, const json &in, data_t &out)
+auto responseLogger = logger("[response]");
+
+template <typename data_t> bool fetch(const char *key, const json &in, data_t &out, bool logErr = false)
 {
     auto success = false;
     try
@@ -15,8 +18,11 @@ template <typename data_t> bool fetch(const char *key, const json &in, data_t &o
             success = true;
         }
     }
-    catch (json::exception)
+    catch (json::exception e)
     {
+        if (logErr){
+            responseLogger.err() << "exception deserializing key: " << key << " " << e.what();
+        }
     }
 
     return success;
@@ -47,16 +53,38 @@ stratum_response stratum_response::parse(std::string_view in)
 
 stratum_response::stratum_response(const json &in) : raw{in}, id{}, nonceStr{}, err{}
 {
-    fetch("id", in, id);
+    auto idStr = std::string{};
+    // id is sent as a string by some pools, try int first then fallback to string if that fails
+    if (fetch("id", in, id) == false ) {
+        std::string idString = {};
+        fetch("id", in, idString);
+        if (idStr != "")
+        { // TODO (bs): mybe actually bother with a try/catch here since stoi can throw
+            id = std::stoi(idStr);
+        }
+    }
+
     fetch("error", in, err);
+    fetch("method", in, methodStr);
 
     json::array_t results = {};
     if (fetch_array("result", in, results))
+    {
+        if (std::size(results) > 1)
         {
-            if (std::size(results) > 1)
+            nonceStr = results[1].get<std::string>();
+        }
+    }
+    json::array_t params = {};
+    if (fetch_array("params", in, results))
+    {
+        for (const auto v : results)
+        {
+            if (v.type() == json::value_t::string)
             {
-                nonceStr = results[1].get<std::string>();
+                parsedParams.push_back(v.get<std::string>());
             }
         }
+    }
 }
 } // namespace stratum

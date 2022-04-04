@@ -17,7 +17,7 @@ class job_queue
         jobs.insert({req->requestId(), req});
     }
 
-    RequestHandle dispatch(int jobId, std::string_view response)
+    RequestHandle dispatch(int jobId)
     {
         RequestHandle job = nullptr;
         std::scoped_lock g(queueLock);

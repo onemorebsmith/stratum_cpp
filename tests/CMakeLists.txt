@@ -11,7 +11,7 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-set(SOURCE_FILES stratum_tests.cpp)
+set(SOURCE_FILES stratum_tests.cpp tcp_tests.cpp)
 
 enable_testing()
 
