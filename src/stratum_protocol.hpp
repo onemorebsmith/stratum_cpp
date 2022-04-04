@@ -48,12 +48,15 @@ class stratum_protocol
 
     void stop()
     {
-        socket = nullptr;
+        if (socket != nullptr){
+            socket->close();
+        }
         running = false;
         if (dispatchThread.joinable())
         {
             dispatchThread.join();
         }
+        socket = nullptr; // we'll remake on begin()
     }
 
     bool doHandshake()

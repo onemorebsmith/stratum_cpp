@@ -7,7 +7,7 @@ namespace stratum
 {
 auto responseLogger = logger("[response]");
 
-template <typename data_t> bool fetch(const char *key, const json &in, data_t &out)
+template <typename data_t> bool fetch(const char *key, const json &in, data_t &out, bool logErr = false)
 {
     auto success = false;
     try
@@ -20,7 +20,9 @@ template <typename data_t> bool fetch(const char *key, const json &in, data_t &o
     }
     catch (json::exception e)
     {
-        responseLogger.err() << "exception deserializing key: " << key << " " << e.what();
+        if (logErr){
+            responseLogger.err() << "exception deserializing key: " << key << " " << e.what();
+        }
     }
 
     return success;
@@ -52,9 +54,14 @@ stratum_response stratum_response::parse(std::string_view in)
 stratum_response::stratum_response(const json &in) : raw{in}, id{}, nonceStr{}, err{}
 {
     auto idStr = std::string{};
-    fetch("id", in, idStr);
-    if (idStr != ""){ // TODO (bs): mybe actually bother with a try/catch here since stoi can throw
-        id = std::stoi(idStr);
+    // id is sent as a string by some pools, try int first then fallback to string if that fails
+    if (fetch("id", in, id) == false ) {
+        std::string idString = {};
+        fetch("id", in, idString);
+        if (idStr != "")
+        { // TODO (bs): mybe actually bother with a try/catch here since stoi can throw
+            id = std::stoi(idStr);
+        }
     }
 
     fetch("error", in, err);
@@ -71,8 +78,10 @@ stratum_response::stratum_response(const json &in) : raw{in}, id{}, nonceStr{}, 
     json::array_t params = {};
     if (fetch_array("params", in, results))
     {
-        for (const auto v : results){
-            if (v.type() == json::value_t::string){
+        for (const auto v : results)
+        {
+            if (v.type() == json::value_t::string)
+            {
                 parsedParams.push_back(v.get<std::string>());
             }
         }

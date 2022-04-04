@@ -19,7 +19,7 @@ stratum_request::stratum_request(stratum_client &c, const std::string &_method)
 
 std::string stratum_request::toString() const
 {
-    return nlohmann::json{{"jsonrpc", "2.0"}, {"id", std::to_string(id)}, {"method", method}, {"params", paramArray}}.dump() + "\n";
+    return nlohmann::json{{"jsonrpc", "2.0"}, {"id", id}, {"method", method}, {"params", paramArray}}.dump() + "\n";
 }
 
 void stratum_request::dispatch(const stratum_response &response) const
