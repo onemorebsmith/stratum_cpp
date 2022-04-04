@@ -2,8 +2,9 @@
 
 #include "stratum_client.h"
 
-#include "logger.h"
 #include "job_queue.hpp"
+#include "logger.h"
+#include "stratum_response.h"
 #include "types.h"
 #include <thread>
 
@@ -15,17 +16,20 @@ class stratum_protocol
     static constexpr auto userAgent = "test_agent/v0.1";
     SocketHandle socket;
     const stratum_config config;
-    callback_t callbacks[static_cast<int>(CallbackTypeE::CALLBACKTYPE_LAST)];
     uint nonce;
     bool running;
     std::thread dispatchThread;
     job_queue jobQueue;
-    util::logger logger;
+    logger logger;
     stratum_client &client;
+
+    // callbacks
+    callback_t callbacks[static_cast<int>(CallbackTypeE::CALLBACKTYPE_LAST)];
+    mining_notify_cb_t miningNotifyCb;
 
   public:
     stratum_protocol(const stratum_config &_config, stratum_client &_client)
-        : client(_client), config(_config), logger{util::logger("[protocol]")}
+        : client(_client), config(_config), logger{"[protocol]"}
     {
     }
 
@@ -103,11 +107,12 @@ class stratum_protocol
     void startDispatchThread()
     {
         dispatchThread = std::thread([this] {
+            auto dispatchLogger = stratum::logger("[dispatch]");
             while (running)
             {
                 if (socket->connected() == false)
                 {
-                    logger.debug() << "not connected to host, waiting";
+                    dispatchLogger.debug() << "not connected to host, waiting";
                     std::this_thread::sleep_for(std::chrono::seconds(1));
                     continue;
                 }
@@ -115,25 +120,42 @@ class stratum_protocol
                 const auto packet = socket->Receive();
                 if (packet.has_value() == false)
                 {
-                    logger.info() << "connection to host lost";
+                    dispatchLogger.info() << "connection to host lost";
                     break; // socket died
                 }
                 auto response = std::stringstream(packet->get()->data().data()); // needs more data
                 std::string line;
                 while (std::getline(response, line))
                 {
-                    logger.debug() << "received: " << line;
+                    dispatchLogger.debug() << "received: " << line;
                     const auto resp = stratum_response::parse(line);
-                    auto job = jobQueue.dispatch(resp.requestId(), line);
+                    auto job = jobQueue.dispatch(resp.requestId());
                     if (job != nullptr)
                     {
                         job->dispatch(resp);
+                    }
+                    else
+                    {
+                        // no job so unsolicited/broadcast/notify/etc..
+                        handleNotification(resp);
                     }
                 }
             }
 
             return true;
         });
+    }
+
+    void handleNotification(const stratum_response &resp)
+    {
+        if (resp.method() == "mining.notify")
+        {
+            if (miningNotifyCb != nullptr)
+            {
+                auto params = mining_notify{ .params = resp.params() };
+                miningNotifyCb(client, params);
+            }
+        }
     }
 
     bool execRequest(RequestHandle req)
@@ -180,6 +202,16 @@ class stratum_protocol
         }
     }
 
+    void onMiningNotify(mining_notify_cb_t &&cb)
+    {
+        miningNotifyCb = std::forward<mining_notify_cb_t>(cb);
+    }
+
+    void join(){
+        if (dispatchThread.joinable()){
+            dispatchThread.join();
+        }
+    }
   private:
     static void log(std::string_view msg)
     {
